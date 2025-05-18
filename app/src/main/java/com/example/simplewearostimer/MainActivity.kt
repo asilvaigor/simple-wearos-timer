@@ -1,4 +1,4 @@
-package com.example.simpleworkouttimer
+package com.example.simplewearostimer
 
 import android.Manifest
 import android.content.BroadcastReceiver

@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.simpleworkouttimer"
+    namespace = "com.example.simplewearostimer"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.simpleworkouttimer"
+        applicationId = "com.example.simplewearostimer"
         minSdk = 30
         targetSdk = 34
         versionCode = 1
@@ -27,6 +27,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
     compileOptions {

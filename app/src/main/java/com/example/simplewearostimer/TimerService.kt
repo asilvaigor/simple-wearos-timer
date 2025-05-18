@@ -1,4 +1,4 @@
-package com.example.simpleworkouttimer
+package com.example.simplewearostimer
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -44,13 +44,13 @@ class TimerService : Service(), CoroutineScope {
     }
 
     companion object {
-        const val ACTION_START_TIMER = "com.example.simpleworkouttimer.ACTION_START_TIMER"
-        const val ACTION_STOP_TIMER = "com.example.simpleworkouttimer.ACTION_STOP_TIMER"
+        const val ACTION_START_TIMER = "com.example.simplewearostimer.ACTION_START_TIMER"
+        const val ACTION_STOP_TIMER = "com.example.simplewearostimer.ACTION_STOP_TIMER"
         const val EXTRA_TARGET_TIME_MILLIS =
-            "com.example.simpleworkouttimer.EXTRA_TARGET_TIME_MILLIS"
+            "com.example.simplewearostimer.EXTRA_TARGET_TIME_MILLIS"
         const val NOTIFICATION_CHANNEL_ID = "TimerServiceChannel"
         const val NOTIFICATION_ID = 1
-        const val ACTION_TIMER_FINISHED = "com.example.simpleworkouttimer.TIMER_FINISHED"
+        const val ACTION_TIMER_FINISHED = "com.example.simplewearostimer.TIMER_FINISHED"
     }
 
     private var ongoingActivity: OngoingActivity? = null
@@ -62,7 +62,7 @@ class TimerService : Service(), CoroutineScope {
         val powerManager = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
-            "SimpleWorkoutTimer::WakeLockTag"
+            "SimpleWearOSTimer::WakeLockTag"
         )
     }
 

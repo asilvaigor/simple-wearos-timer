@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Simple Workout Timer"
+rootProject.name = "Simple WearOS Timer"
 include(":app")

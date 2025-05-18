@@ -1,6 +1,6 @@
-# simple-workout-timer
+# simple-wearos-timer
 
-Simple Wear OS Timer App.
+Simple WearOS Workout Timer App.
 
 |        First screen        |     Second Screen     |
 | :------------------------: | :-------------------: |
