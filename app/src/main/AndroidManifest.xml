@@ -3,6 +3,9 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- For Android 14 (API 34) and higher, if targeting API 34+, you might need a more specific type -->
+    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" /> -->
+
 
     <application
         android:allowBackup="true"
