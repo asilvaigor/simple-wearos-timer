@@ -20,13 +20,19 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.wear.compose.material.*
 import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.SwipeToDismissValue
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -36,7 +42,7 @@ class MainActivity : ComponentActivity() {
     private var isBound = false
     private var targetTimeSeconds by mutableStateOf(45)
     private var isTimerRunning by mutableStateOf(false)
-    private var timerInstanceKey by mutableStateOf(0) // Key to force UI refresh on timer restart
+    private var timerInstanceKey by mutableStateOf(0)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
@@ -54,9 +60,7 @@ class MainActivity : ComponentActivity() {
     private val timerUpdateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                TimerService.ACTION_TIMER_FINISHED -> {
-                    // The UI timer will continue based on the existing isTimerRunning state.
-                }
+                TimerService.ACTION_TIMER_FINISHED -> {}
             }
         }
     }
@@ -101,7 +105,7 @@ class MainActivity : ComponentActivity() {
 
     private fun startTimerInService(targetMillis: Long) {
         isTimerRunning = true
-        timerInstanceKey++ // Increment key to signal a new timer instance for the UI
+        timerInstanceKey++
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_START_TIMER
             putExtra(TimerService.EXTRA_TARGET_TIME_MILLIS, targetMillis)
@@ -111,7 +115,6 @@ class MainActivity : ComponentActivity() {
 
     private fun stopTimerInService() {
         isTimerRunning = false
-        // timerInstanceKey is not changed here, as stopping doesn't require a UI "reset" like starting does.
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_STOP_TIMER
         }
@@ -123,7 +126,7 @@ class MainActivity : ComponentActivity() {
 fun WearApp(
     targetTimeSeconds: Int,
     isTimerRunning: Boolean,
-    timerKey: Int, // Receive timerKey
+    timerKey: Int,
     onTargetTimeChange: (Int) -> Unit,
     startTimerService: (Long) -> Unit,
     stopTimerService: () -> Unit
@@ -173,10 +176,8 @@ fun WearApp(
                 TimerScreen(
                     isTimerActive = isTimerRunning,
                     targetTimeMillis = targetTimeSeconds * 1000L,
-                    timerKey = timerKey, // Pass timerKey to TimerScreen
+                    timerKey = timerKey,
                     onScreenTap = {
-                        // Simply start the timer; the service will handle resetting if it's already running.
-                        // The new timerInstanceKey will ensure TimerScreen resets its display.
                         startTimerService(lastSelectedTargetTime.value * 1000L)
                     }
                 )
@@ -189,55 +190,75 @@ fun WearApp(
 fun TimePickerScreen(initialValue: Int, onTimeSelected: (Int) -> Unit) {
     var selectedTime by remember { mutableStateOf(initialValue.coerceAtLeast(5)) }
 
-    Column(
+    Scaffold(
+        timeText = {
+            TimeText(
+                timeTextStyle = TimeTextDefaults.timeTextStyle(
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colors.onBackground
+                )
+            )
+        },
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = { onTimeSelected(selectedTime) }
                 )
-            },
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Button(
-                onClick = { if (selectedTime > 5) selectedTime -= 5 },
-                colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.primary),
-                modifier = Modifier.size(ButtonDefaults.ExtraSmallButtonSize)
-            ) {
-                Text("-")
             }
-            Text("${selectedTime}s", fontSize = 34.sp)
-            Button(
-                onClick = { selectedTime += 5 },
-                colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.primary),
-                modifier = Modifier.size(ButtonDefaults.ExtraSmallButtonSize)
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.padding(horizontal = 16.dp)
             ) {
-                Text("+")
+                Button(
+                    onClick = { if (selectedTime > 5) selectedTime -= 5 },
+                    colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.primary),
+                    modifier = Modifier.size(ButtonDefaults.ExtraSmallButtonSize)
+                ) {
+                    Text("-")
+                }
+                Text(
+                    "${selectedTime}s",
+                    fontSize = 34.sp,
+                    color = MaterialTheme.colors.onBackground
+                )
+                Button(
+                    onClick = { selectedTime += 5 },
+                    colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.primary),
+                    modifier = Modifier.size(ButtonDefaults.ExtraSmallButtonSize)
+                ) {
+                    Text("+")
+                }
             }
         }
     }
 }
 
 @Composable
-fun TimerScreen(isTimerActive: Boolean, targetTimeMillis: Long, timerKey: Int, onScreenTap: () -> Unit) {
+fun TimerScreen(
+    isTimerActive: Boolean,
+    targetTimeMillis: Long,
+    timerKey: Int,
+    onScreenTap: () -> Unit
+) {
     var displayTimeMillis by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(isTimerActive, timerKey) { // Add timerKey to LaunchedEffect dependencies
+    LaunchedEffect(isTimerActive, timerKey) {
         if (isTimerActive) {
-            displayTimeMillis = 0L // Reset display time when timer becomes active or key changes
+            displayTimeMillis = 0L
 
             val timerStartTime = System.currentTimeMillis()
             launch {
                 while (isActive) {
                     val elapsed = System.currentTimeMillis() - timerStartTime
                     displayTimeMillis = elapsed
-                    delay(50)
+                    delay(100)
                 }
             }
         }
@@ -249,10 +270,17 @@ fun TimerScreen(isTimerActive: Boolean, targetTimeMillis: Long, timerKey: Int, o
 
     var isTapProcessing by remember { mutableStateOf(false) }
 
-    Box(
+    Scaffold(
+        timeText = {
+            TimeText(
+                timeTextStyle = TimeTextDefaults.timeTextStyle(
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colors.onBackground
+                )
+            )
+        },
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colors.background)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onTap = {
@@ -265,29 +293,71 @@ fun TimerScreen(isTimerActive: Boolean, targetTimeMillis: Long, timerKey: Int, o
                         }
                     }
                 )
-            },
-        contentAlignment = Alignment.Center
+            }
     ) {
-        CircularProgressIndicator(
-            progress = 1f,
+        Box(
             modifier = Modifier.fillMaxSize(),
-            indicatorColor = Color.Transparent,
-            trackColor = MaterialTheme.colors.onBackground.copy(alpha = 0.1f),
-            strokeWidth = 6.dp
+            contentAlignment = Alignment.Center
+        ) {
+            CustomArcProgressIndicator(
+                progress = progress,
+                modifier = Modifier.fillMaxSize(),
+                backgroundColor = MaterialTheme.colors.onBackground.copy(alpha = 0.1f),
+                foregroundColor = MaterialTheme.colors.primary
+            )
+
+            Text(
+                text = formatTime(displayTimeMillis),
+                fontSize = 40.sp,
+                textAlign = TextAlign.Center,
+                color = if (targetTimeMillis in 1..displayTimeMillis)
+                    MaterialTheme.colors.primary
+                else
+                    MaterialTheme.colors.onBackground
+            )
+        }
+    }
+}
+
+@Composable
+fun CustomArcProgressIndicator(
+    progress: Float,
+    modifier: Modifier = Modifier,
+    backgroundColor: Color,
+    foregroundColor: Color,
+    strokeWidth: Dp = 6.dp
+) {
+    Canvas(modifier = modifier) {
+        val arcSize = size.minDimension - strokeWidth.toPx() * 2
+
+        drawArc(
+            color = backgroundColor,
+            startAngle = -60f,
+            sweepAngle = 300f,
+            useCenter = false,
+            topLeft = Offset(
+                (size.width - arcSize) / 2,
+                (size.height - arcSize) / 2
+            ),
+            size = Size(arcSize, arcSize),
+            style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round)
         )
-        CircularProgressIndicator(
-            progress = progress,
-            modifier = Modifier.fillMaxSize(),
-            indicatorColor = MaterialTheme.colors.primary,
-            trackColor = Color.Transparent,
-            strokeWidth = 6.dp
-        )
-        Text(
-            text = formatTime(displayTimeMillis),
-            fontSize = 40.sp,
-            textAlign = TextAlign.Center,
-            color = if (targetTimeMillis in 1..displayTimeMillis) MaterialTheme.colors.primary else MaterialTheme.colors.onBackground
-        )
+
+        val sweepAngle = progress * 300f
+        if (sweepAngle > 0f) {
+            drawArc(
+                color = foregroundColor,
+                startAngle = -60f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                topLeft = Offset(
+                    (size.width - arcSize) / 2,
+                    (size.height - arcSize) / 2
+                ),
+                size = Size(arcSize, arcSize),
+                style = Stroke(width = strokeWidth.toPx(), cap = StrokeCap.Round)
+            )
+        }
     }
 }
 
