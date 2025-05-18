@@ -13,7 +13,6 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -33,6 +32,7 @@ import androidx.wear.compose.foundation.SwipeToDismissValue
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -40,9 +40,9 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private var timerService: TimerService? = null
     private var isBound = false
-    private var targetTimeSeconds by mutableStateOf(45)
+    private var targetTimeSeconds by mutableIntStateOf(45)
     private var isTimerRunning by mutableStateOf(false)
-    private var timerInstanceKey by mutableStateOf(0)
+    private var timerInstanceKey by mutableIntStateOf(0)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
@@ -366,5 +366,5 @@ fun formatTime(millis: Long): String {
     val minutes = totalSeconds / 60
     val remainingSeconds = totalSeconds % 60
     val hundreds = (millis % 1000) / 100
-    return String.format("%02d:%02d.%1d", minutes, remainingSeconds, hundreds)
+    return String.format(Locale.US, "%02d:%02d.%1d", minutes, remainingSeconds, hundreds)
 }

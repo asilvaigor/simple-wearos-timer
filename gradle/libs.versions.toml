@@ -1,8 +1,26 @@
 [versions]
+activityComposeVersion = "1.10.1"
 androidGradlePlugin = "8.10.0"
+composeBomVersion = "2025.05.00"
+composeFoundationVersion = "1.4.1"
+composeMaterial = "1.4.1"
+coreKtxVersion = "1.16.0"
 kotlin = "2.1.0"
+lifecycleRuntimeKtxVersion = "2.9.0"
 
 [libraries]
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityComposeVersion" }
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBomVersion" }
+androidx-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "composeFoundationVersion" }
+androidx-compose-material = { module = "androidx.wear.compose:compose-material", version.ref = "composeMaterial" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtxVersion" }
+androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtxVersion" }
+androidx-ui = { module = "androidx.compose.ui:ui" }
+androidx-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+androidx-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+androidx-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+androidx-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "androidGradlePlugin" }
