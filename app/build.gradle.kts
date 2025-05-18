@@ -59,5 +59,6 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
+    implementation(libs.androidx.wear.ongoing)
     implementation(platform(libs.androidx.compose.bom))
 }

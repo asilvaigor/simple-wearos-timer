@@ -1,18 +1,22 @@
 package com.example.simpleworkouttimer
 
+import android.Manifest
 import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -26,6 +30,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.wear.compose.material.*
 import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.SwipeToDismissValue
@@ -43,6 +49,8 @@ class MainActivity : ComponentActivity() {
     private var targetTimeSeconds by mutableIntStateOf(45)
     private var isTimerRunning by mutableStateOf(false)
     private var timerInstanceKey by mutableIntStateOf(0)
+
+    private var notificationPermissionGranted by mutableStateOf(false)
 
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(className: ComponentName, service: IBinder) {
@@ -67,11 +75,26 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        checkAndUpdateNotificationPermission()
+
         setContent {
+            val requestPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission()
+            ) { isGranted: Boolean ->
+                notificationPermissionGranted = isGranted
+            }
+
+            LaunchedEffect(Unit) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !notificationPermissionGranted) {
+                    requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+
             WearApp(
                 targetTimeSeconds = targetTimeSeconds,
                 isTimerRunning = isTimerRunning,
-                timerKey = timerInstanceKey, // Pass the key to WearApp
+                timerKey = timerInstanceKey,
                 onTargetTimeChange = { newTime -> targetTimeSeconds = newTime },
                 startTimerService = { startTimeMillis -> startTimerInService(startTimeMillis) },
                 stopTimerService = { stopTimerInService() }
@@ -79,10 +102,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun checkAndUpdateNotificationPermission() {
+        notificationPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            NotificationManagerCompat.from(this).areNotificationsEnabled()
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         Intent(this, TimerService::class.java).also { intent ->
-            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+            bindService(intent, connection, BIND_AUTO_CREATE)
         }
         val filter = IntentFilter().apply {
             addAction(TimerService.ACTION_TIMER_FINISHED)
@@ -92,6 +126,11 @@ class MainActivity : ComponentActivity() {
         } else {
             registerReceiver(timerUpdateReceiver, filter)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        checkAndUpdateNotificationPermission()
     }
 
     override fun onStop() {
@@ -106,6 +145,11 @@ class MainActivity : ComponentActivity() {
     private fun startTimerInService(targetMillis: Long) {
         isTimerRunning = true
         timerInstanceKey++
+
+        if (!notificationPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+
         val intent = Intent(this, TimerService::class.java).apply {
             action = TimerService.ACTION_START_TIMER
             putExtra(TimerService.EXTRA_TARGET_TIME_MILLIS, targetMillis)
@@ -133,7 +177,7 @@ fun WearApp(
 ) {
     var showPicker by remember { mutableStateOf(true) }
 
-    val lastSelectedTargetTime = remember { mutableStateOf(targetTimeSeconds) }
+    val lastSelectedTargetTime = remember { mutableIntStateOf(targetTimeSeconds) }
 
     if (showPicker) {
         LaunchedEffect(Unit) {
@@ -146,7 +190,7 @@ fun WearApp(
             initialValue = targetTimeSeconds,
             onTimeSelected = { selectedTargetTime ->
                 onTargetTimeChange(selectedTargetTime)
-                lastSelectedTargetTime.value = selectedTargetTime
+                lastSelectedTargetTime.intValue = selectedTargetTime
                 showPicker = false
                 startTimerService(selectedTargetTime * 1000L)
             }
@@ -160,7 +204,7 @@ fun WearApp(
             }
         }
 
-        androidx.wear.compose.material.SwipeToDismissBox(
+        SwipeToDismissBox(
             state = swipeToDismissBoxState,
             onDismissed = {
                 showPicker = true
@@ -178,7 +222,7 @@ fun WearApp(
                     targetTimeMillis = targetTimeSeconds * 1000L,
                     timerKey = timerKey,
                     onScreenTap = {
-                        startTimerService(lastSelectedTargetTime.value * 1000L)
+                        startTimerService(lastSelectedTargetTime.intValue * 1000L)
                     }
                 )
             }
@@ -188,7 +232,7 @@ fun WearApp(
 
 @Composable
 fun TimePickerScreen(initialValue: Int, onTimeSelected: (Int) -> Unit) {
-    var selectedTime by remember { mutableStateOf(initialValue.coerceAtLeast(5)) }
+    var selectedTime by remember { mutableIntStateOf(initialValue.coerceAtLeast(5)) }
 
     Scaffold(
         timeText = {
@@ -247,7 +291,7 @@ fun TimerScreen(
     timerKey: Int,
     onScreenTap: () -> Unit
 ) {
-    var displayTimeMillis by remember { mutableStateOf(0L) }
+    var displayTimeMillis by remember { mutableLongStateOf(0L) }
 
     LaunchedEffect(isTimerActive, timerKey) {
         if (isTimerActive) {
