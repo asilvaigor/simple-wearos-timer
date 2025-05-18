@@ -3,28 +3,10 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
 
-    <!-- Permissions -->
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- FOREGROUND_SERVICE is required for all foreground services. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <!-- Required for Foreground Service Notifications on Android 13+ (API 33+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
-
-    <!--
-        For Android 14 (API 34) and higher, if targeting API 34+,
-        you must declare a foreground service type.
-        If your service performs a task that falls under "shortService", this is appropriate.
-        Other types include: connectedDevice, dataSync, location, mediaPlayback, mediaProjection,
-        microphone, phoneCall, remoteMessaging, specialUse, systemExempted.
-        If your use case is more specific (e.g., health for a fitness app), choose the most relevant type.
-        For a simple timer, shortService or potentially health (if it's part of a larger fitness context)
-        might be considered. Given it's a simple workout timer, shortService seems reasonable.
-    -->
-    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SHORT_SERVICE" /> -->
-    <!-- Or if it was health related -->
-    <!-- <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" /> -->
-
 
     <application
         android:allowBackup="true"
@@ -51,11 +33,6 @@
             android:name=".TimerService"
             android:exported="false"
             android:foregroundServiceType="shortService" >
-            <!-- For Android 14+ you might need to add more specific types if shortService isn't enough
-                 or if your app has a more specific role like health monitoring.
-            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                      android:value="timer_for_user_workout" />
-            -->
         </service>
     </application>
 
