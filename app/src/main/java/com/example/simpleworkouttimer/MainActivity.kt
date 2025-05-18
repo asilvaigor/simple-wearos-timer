@@ -1,8 +1,16 @@
 package com.example.simpleworkouttimer
 
+import android.content.BroadcastReceiver
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.ServiceConnection
+import android.os.Build
 import android.os.Bundle
-import android.os.Vibrator
-import android.os.VibrationEffect
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -11,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -19,79 +28,124 @@ import androidx.wear.compose.material.*
 import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.SwipeToDismissValue
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.Job
-import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            WearApp()
+    private var timerService: TimerService? = null
+    private var isBound = false
+    private var targetTimeSeconds by mutableStateOf(45)
+    private var isTimerRunning by mutableStateOf(false)
+    private var timerInstanceKey by mutableStateOf(0) // Key to force UI refresh on timer restart
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(className: ComponentName, service: IBinder) {
+            val binder = service as TimerService.LocalBinder
+            timerService = binder.getService()
+            isBound = true
+        }
+
+        override fun onServiceDisconnected(arg0: ComponentName) {
+            isBound = false
+            timerService = null
         }
     }
-}
 
-@Composable
-fun WearApp() {
-    var targetTimeSeconds by remember { mutableStateOf(45) }
-    var currentTimeMillis by remember { mutableStateOf(0L) }
-    var isTimerRunning by remember { mutableStateOf(false) }
-    var showPicker by remember { mutableStateOf(true) }
-    val vibrator = androidx.compose.ui.platform.LocalContext.current.getSystemService(Vibrator::class.java)
-
-    val coroutineScope = rememberCoroutineScope()
-    var timerJob by remember { mutableStateOf<Job?>(null) }
-    var currentTimerId by remember { mutableStateOf(0) }
-    var hasVibratedForCurrentRun by remember { mutableStateOf(false) } // Added: Flag to track vibration
-
-    fun stopTimer() {
-        timerJob?.cancel()
-        isTimerRunning = false
-    }
-
-    fun startTimerInstance() {
-        timerJob?.cancel()
-
-        currentTimerId++
-        val newTimerId = currentTimerId
-        hasVibratedForCurrentRun = false // Added: Reset vibration flag for the new timer instance
-
-        isTimerRunning = true
-        timerJob = coroutineScope.launch {
-            val effectiveStartTime = System.currentTimeMillis() - currentTimeMillis
-            try {
-                while (isActive) {
-                    if (currentTimerId == newTimerId) {
-                        currentTimeMillis = System.currentTimeMillis() - effectiveStartTime
-
-                        val targetMillis = targetTimeSeconds * 1000L
-                        if (!hasVibratedForCurrentRun && targetMillis > 0 && currentTimeMillis >= targetMillis) {
-                            vibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
-                            hasVibratedForCurrentRun = true // Set flag to ensure vibration only happens once
-                        }
-                    }
-                    delay(10)
+    private val timerUpdateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                TimerService.ACTION_TIMER_FINISHED -> {
+                    // The UI timer will continue based on the existing isTimerRunning state.
                 }
-            } finally {
-                // Optional: Actions on coroutine completion/cancellation
             }
         }
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            WearApp(
+                targetTimeSeconds = targetTimeSeconds,
+                isTimerRunning = isTimerRunning,
+                timerKey = timerInstanceKey, // Pass the key to WearApp
+                onTargetTimeChange = { newTime -> targetTimeSeconds = newTime },
+                startTimerService = { startTimeMillis -> startTimerInService(startTimeMillis) },
+                stopTimerService = { stopTimerInService() }
+            )
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        Intent(this, TimerService::class.java).also { intent ->
+            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        }
+        val filter = IntentFilter().apply {
+            addAction(TimerService.ACTION_TIMER_FINISHED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(timerUpdateReceiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(timerUpdateReceiver, filter)
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (isBound) {
+            unbindService(connection)
+            isBound = false
+        }
+        unregisterReceiver(timerUpdateReceiver)
+    }
+
+    private fun startTimerInService(targetMillis: Long) {
+        isTimerRunning = true
+        timerInstanceKey++ // Increment key to signal a new timer instance for the UI
+        val intent = Intent(this, TimerService::class.java).apply {
+            action = TimerService.ACTION_START_TIMER
+            putExtra(TimerService.EXTRA_TARGET_TIME_MILLIS, targetMillis)
+        }
+        startForegroundService(intent)
+    }
+
+    private fun stopTimerInService() {
+        isTimerRunning = false
+        // timerInstanceKey is not changed here, as stopping doesn't require a UI "reset" like starting does.
+        val intent = Intent(this, TimerService::class.java).apply {
+            action = TimerService.ACTION_STOP_TIMER
+        }
+        startService(intent)
+    }
+}
+
+@Composable
+fun WearApp(
+    targetTimeSeconds: Int,
+    isTimerRunning: Boolean,
+    timerKey: Int, // Receive timerKey
+    onTargetTimeChange: (Int) -> Unit,
+    startTimerService: (Long) -> Unit,
+    stopTimerService: () -> Unit
+) {
+    var showPicker by remember { mutableStateOf(true) }
+
+    val lastSelectedTargetTime = remember { mutableStateOf(targetTimeSeconds) }
+
     if (showPicker) {
         LaunchedEffect(Unit) {
-            stopTimer()
+            if (isTimerRunning) {
+                stopTimerService()
+            }
         }
 
         TimePickerScreen(
             initialValue = targetTimeSeconds,
             onTimeSelected = { selectedTargetTime ->
-                targetTimeSeconds = selectedTargetTime
-                currentTimeMillis = 0L
+                onTargetTimeChange(selectedTargetTime)
+                lastSelectedTargetTime.value = selectedTargetTime
                 showPicker = false
-                startTimerInstance()
+                startTimerService(selectedTargetTime * 1000L)
             }
         )
     } else {
@@ -99,7 +153,7 @@ fun WearApp() {
         LaunchedEffect(swipeToDismissBoxState.currentValue) {
             if (swipeToDismissBoxState.currentValue == SwipeToDismissValue.Dismissed) {
                 showPicker = true
-                currentTimeMillis = 0L
+                stopTimerService()
             }
         }
 
@@ -107,7 +161,7 @@ fun WearApp() {
             state = swipeToDismissBoxState,
             onDismissed = {
                 showPicker = true
-                currentTimeMillis = 0L
+                stopTimerService()
             }
         ) { isBackground ->
             if (isBackground) {
@@ -117,11 +171,13 @@ fun WearApp() {
                 )
             } else {
                 TimerScreen(
-                    currentTimeMillis = currentTimeMillis,
+                    isTimerActive = isTimerRunning,
                     targetTimeMillis = targetTimeSeconds * 1000L,
+                    timerKey = timerKey, // Pass timerKey to TimerScreen
                     onScreenTap = {
-                        currentTimeMillis = 0L
-                        startTimerInstance()
+                        // Simply start the timer; the service will handle resetting if it's already running.
+                        // The new timerInstanceKey will ensure TimerScreen resets its display.
+                        startTimerService(lastSelectedTargetTime.value * 1000L)
                     }
                 )
             }
@@ -131,7 +187,7 @@ fun WearApp() {
 
 @Composable
 fun TimePickerScreen(initialValue: Int, onTimeSelected: (Int) -> Unit) {
-    var selectedTime by remember { mutableStateOf(initialValue) }
+    var selectedTime by remember { mutableStateOf(initialValue.coerceAtLeast(5)) }
 
     Column(
         modifier = Modifier
@@ -152,19 +208,15 @@ fun TimePickerScreen(initialValue: Int, onTimeSelected: (Int) -> Unit) {
             Button(
                 onClick = { if (selectedTime > 5) selectedTime -= 5 },
                 colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.primary),
-                modifier = Modifier
-                    .pointerInput(Unit) {}
-                    .size(ButtonDefaults.ExtraSmallButtonSize)
+                modifier = Modifier.size(ButtonDefaults.ExtraSmallButtonSize)
             ) {
                 Text("-")
             }
-            Text("${selectedTime}s", fontSize = 28.sp)
+            Text("${selectedTime}s", fontSize = 34.sp)
             Button(
                 onClick = { selectedTime += 5 },
                 colors = ButtonDefaults.buttonColors(backgroundColor = MaterialTheme.colors.primary),
-                modifier = Modifier
-                    .pointerInput(Unit) {}
-                    .size(ButtonDefaults.ExtraSmallButtonSize)
+                modifier = Modifier.size(ButtonDefaults.ExtraSmallButtonSize)
             ) {
                 Text("+")
             }
@@ -173,8 +225,29 @@ fun TimePickerScreen(initialValue: Int, onTimeSelected: (Int) -> Unit) {
 }
 
 @Composable
-fun TimerScreen(currentTimeMillis: Long, targetTimeMillis: Long, onScreenTap: () -> Unit) {
-    val progress = if (targetTimeMillis > 0) (currentTimeMillis.toFloat() / targetTimeMillis.toFloat()).coerceIn(0f, 1f) else 0f
+fun TimerScreen(isTimerActive: Boolean, targetTimeMillis: Long, timerKey: Int, onScreenTap: () -> Unit) {
+    var displayTimeMillis by remember { mutableStateOf(0L) }
+
+    LaunchedEffect(isTimerActive, timerKey) { // Add timerKey to LaunchedEffect dependencies
+        if (isTimerActive) {
+            displayTimeMillis = 0L // Reset display time when timer becomes active or key changes
+
+            val timerStartTime = System.currentTimeMillis()
+            launch {
+                while (isActive) {
+                    val elapsed = System.currentTimeMillis() - timerStartTime
+                    displayTimeMillis = elapsed
+                    delay(50)
+                }
+            }
+        }
+    }
+
+    val progress = if (targetTimeMillis > 0) {
+        (displayTimeMillis.toFloat() / targetTimeMillis.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+
+    var isTapProcessing by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -182,7 +255,15 @@ fun TimerScreen(currentTimeMillis: Long, targetTimeMillis: Long, onScreenTap: ()
             .background(MaterialTheme.colors.background)
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onScreenTap() }
+                    onTap = {
+                        if (!isTapProcessing) {
+                            isTapProcessing = true
+                            onScreenTap()
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                isTapProcessing = false
+                            }, 1000)
+                        }
+                    }
                 )
             },
         contentAlignment = Alignment.Center
@@ -202,10 +283,10 @@ fun TimerScreen(currentTimeMillis: Long, targetTimeMillis: Long, onScreenTap: ()
             strokeWidth = 6.dp
         )
         Text(
-            text = formatTime(currentTimeMillis),
+            text = formatTime(displayTimeMillis),
             fontSize = 40.sp,
             textAlign = TextAlign.Center,
-            color = if (currentTimeMillis >= targetTimeMillis && targetTimeMillis > 0) MaterialTheme.colors.primary else MaterialTheme.colors.onBackground
+            color = if (targetTimeMillis in 1..displayTimeMillis) MaterialTheme.colors.primary else MaterialTheme.colors.onBackground
         )
     }
 }
@@ -214,6 +295,6 @@ fun formatTime(millis: Long): String {
     val totalSeconds = millis / 1000
     val minutes = totalSeconds / 60
     val remainingSeconds = totalSeconds % 60
-    val hundreds = (millis % 1000) / 10
-    return String.format("%02d:%02d.%02d", minutes, remainingSeconds, hundreds)
+    val hundreds = (millis % 1000) / 100
+    return String.format("%02d:%02d.%1d", minutes, remainingSeconds, hundreds)
 }
